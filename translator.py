@@ -1,96 +1,53 @@
 import pandas as pd
+import numpy as np
 import json
 import os
 import sys
 
-def load_file(file_path):
-    # Get the file extension (.csv, .xlsx, .json)
-    extension = os.path.splitext(file_path)[1].lower()
-
-    # Load CSV
-    if extension == ".csv":
-        df = pd.read_csv(file_path)
-    # Load Excel
-    elif extension == ".xlsx":
-        df = pd.read_excel(file_path)
-    # Load JSON
-    elif extension == ".json":
-        df = pd.read_json(file_path)
-    else:
-        raise ValueError("Unsupported file type")
-
-    return df
-
-def get_table_name(file_path):
-    # Get the filename only
-    file_name = os.path.basename(file_path)
-    # Remove the extension
-    table_name = os.path.splitext(file_name)[0]
-
-    return table_name
-
-#Normalizes data types to a standard set (integer, float, datetime, boolean, string)
-def normalize_data_type(dtype):
-    dtype = str(dtype).lower()
-
-    if "int" in dtype:
-        return "integer"
-    elif "float" in dtype:
-        return "float"
-    elif "date" in dtype or "time" in dtype:
-        return "datetime"
-    elif "bool" in dtype:
-        return "boolean"
-    else:
-        return "string"
-
-#metadata test, creates a dictionary from the metadata CSV file for easy lookup of descriptions based on table and column names
-def load_metadata(metadata_file):
-    metadata_df = pd.read_csv(metadata_file)
-    metadata_dict = {}
-
-    for _, row in metadata_df.iterrows():
-        key = f"{row['TableNM']}.{row['ColumnNM']}"
-        metadata_dict[key] = row["DescriptionTXT"]
-
-    return metadata_dict
+# Read Sample data from CSV file
+def read_sample_data(file, columns_dict):
+    sample_data = []
+    df = pd.read_excel(file, header=None)
+    df.dropna(how='all')
+    table_name = ""
+    columns = []
+    found_coulmn = False
+    for row in df.itertuples(index=False):                
+        if pd.isna(row[1]):
+            table_name = row[0]
+            found_coulmn = False
+        elif len(row) > 2 and not found_coulmn:
+            found_coulmn = True
+            columns = [str(col) for col in row if not pd.isna(col)]
+        elif len(row) > 2 and found_coulmn:            
+                for index, data in enumerate(row):
+                    if index == len(columns):
+                        break
+                    if f"{table_name}.{columns[index]}" in columns_dict and not pd.isna(data):
+                            columns_dict[f"{table_name}.{columns[index]}"]['data_type'] = type(data).__name__
+                            columns_dict[f"{table_name}.{columns[index]}"]['sample_data'].append(data)  
 
 #Pulls column names
-def extract_columns(df, table_name, metadata):
+def extract_columns(file):
+    columns_dict = {}
     columns = []
-
-    for col in df.columns:
-        data_type = normalize_data_type(df[col].dtype)
-
-        sample_values = df[col].dropna().unique().tolist()[:3]
-
-        #Looks for columns that end with "_id" to identify potential foreign keys
-        is_fk = col.lower().endswith("_id")
-        metadata_key = f"{table_name}.{col}"
-        description = metadata.get(metadata_key, f"{col} column")
-
-        column_info = {
-            "column_name": col,
-            "table_name": table_name,
-            "table_description": f"Table containing data from {table_name}",
-            "data_type": data_type,
-            "description": description,
-            "sample_data": sample_values,
-            "is_foreign_key": is_fk,
-            "references": None 
-        }
-
-        columns.append(column_info)
-
-    return columns
-
-#Formatting for the JSON structure
-def build_output(columns):
-    output = {
-        "columns": columns
-    }
-
-    return output
+    df = pd.read_csv(file, skiprows=0)    
+    for _, row in df.iterrows():
+        if len(row) == 4:
+            column_info = {
+                "column_name": f"{row[2]}",
+                "table_name": f"{row[1]}",
+                "table_description": "",
+                "data_type": "",
+                "column_description": f"{row[3]}",
+                "sample_data": [],
+                "is_foreign_key": "",
+                "references": None 
+            }
+            columns_dict[f"{row[0]}.{row[1]}.{row[2]}"] = column_info
+            columns.append(column_info)
+   
+    return columns, columns_dict
 
 #Creates the proper JSON file
 def save_json(output, file_name):
@@ -101,22 +58,10 @@ def save_json(output, file_name):
 
 if __name__ == "__main__":
 
-    if len(sys.argv) < 2:
-        print("Usage: python translator.py <input_file>")
-        sys.exit(1)
+    columns, columns_dict = extract_columns("data/omop/EDWMetadata.csv")
+    data = read_sample_data("data/omop/EDW_Sample_Data.xlsx", columns_dict)
+    
 
-    file_path = sys.argv[1]
-
-    metadata = load_metadata("EDWMetadata.csv")  #metadata test
-
-    df = load_file(file_path)
-
-    table_name = get_table_name(file_path)
-
-    columns = extract_columns(df, table_name, metadata)
-
-    output = build_output(columns)
-
-    save_json(output, "output.json")
+    save_json(columns, "output.json")
 
     print("Translation complete. Output saved to output.json")
