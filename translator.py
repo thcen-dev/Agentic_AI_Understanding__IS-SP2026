@@ -1,8 +1,5 @@
 import pandas as pd
-import numpy as np
 import json
-import os
-import sys
 
 # Read Sample data from CSV file
 def read_sample_data(file, columns_dict):
@@ -25,7 +22,7 @@ def read_sample_data(file, columns_dict):
                         break
                     if f"{table_name}.{columns[index]}" in columns_dict and not pd.isna(data):
                             columns_dict[f"{table_name}.{columns[index]}"]['data_type'] = type(data).__name__
-                            columns_dict[f"{table_name}.{columns[index]}"]['sample_data'].append(data)  
+                            columns_dict[f"{table_name}.{columns[index]}"]['sample_data'].append(str(data))  
 
 #Pulls column names
 def extract_columns(file):
@@ -62,6 +59,6 @@ if __name__ == "__main__":
     data = read_sample_data("data/omop/EDW_Sample_Data.xlsx", columns_dict)
     
 
-    save_json(columns, "output.json")
+    save_json(columns_dict, "output.json")
 
     print("Translation complete. Output saved to output.json")
